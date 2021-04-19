@@ -4,7 +4,7 @@ from pprint import pprint
 
 
 
-## MIDO INIT
+## INIT
 
 mido.set_backend('mido.backends.pygame')
 
@@ -47,7 +47,7 @@ outport.send(msg)
 
 
 
-## CLEAN EXIT
+## CLEANUP
 
 # outport.reset()
 outport.close()
