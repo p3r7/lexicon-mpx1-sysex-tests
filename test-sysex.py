@@ -87,7 +87,7 @@ def update_master_level(outport, v, device_id = 0x7f):
 
 ## API - REQUEST
 
-def get_request(inport, outport, request_class, control_levels, device_id = 0x7f):
+def request_by_control_levels(inport, outport, request_class, control_levels, device_id = 0x7f):
     rq_class_nibble = nibblize(request_class)
 
     nb_control_levels = len(control_levels)
@@ -115,8 +115,27 @@ def get_request(inport, outport, request_class, control_levels, device_id = 0x7f
     print(rcv.hex())
     return rcv
 
+def request_by_param_type(inport, outport, request_class, param_type, device_id = 0x7f):
+    rq_class_nibble = nibblize(request_class)
+    p_type_nibble = nibblize(param_type, 4)
+    payload = [
+        # header
+        6,9,device_id,6,
+        # request class:
+        rq_class_nibble[0], rq_class_nibble[1],
+        # param type (id)
+        p_type_nibble[0], p_type_nibble[1], p_type_nibble[2], p_type_nibble[3],
+    ]
+
+    snd = mido.Message('sysex', data=payload)
+    outport.send(snd)
+    rcv = inport.receive()
+    print(rcv.hex())
+    return rcv
+
+
 def get_system_config(inport, outport, device_id = 0x7f):
-    rcv = get_request(inport, outport, 0, [], device_id)
+    rcv = request_by_control_levels(inport, outport, 0, [], device_id)
     rcv = rcv.bytes()
     return {
         'version_major': unnibblize(rcv[5:7]),
@@ -129,7 +148,7 @@ def get_system_config(inport, outport, device_id = 0x7f):
     }
 
 def get_param_data(inport, outport, control_levels, value_type = 'int', device_id = 0x7f):
-    rcv = get_request(inport, outport, 1, control_levels, device_id)
+    rcv = request_by_control_levels(inport, outport, 1, control_levels, device_id)
     # print(rcv.hex())
     rcv = rcv.bytes()
     size_bytes = unnibblize(rcv[5:9])
@@ -155,16 +174,33 @@ def get_param_data(inport, outport, control_levels, value_type = 'int', device_i
     }
 
 def get_param_display(inport, outport, control_levels, device_id = 0x7f):
-    nb_control_levels = len(control_levels)
-    nb_cl_nibble = nibblize(nb_control_levels, 4)
-    get_request(inport, outport, 2, control_levels, device_id)
+    rcv = request_by_control_levels(inport, outport, 2, control_levels, device_id)
+    rcv = rcv.bytes()
+    size_bytes = unnibblize(rcv[5:9])
+    return unnibblize_str(rcv[9:(9+2*size_bytes)])
 
 def get_param_type(inport, outport, control_levels, device_id = 0x7f):
-    nb_control_levels = len(control_levels)
-    nb_cl_nibble = nibblize(nb_control_levels, 4)
-    rcv = get_request(inport, outport, 3, control_levels, device_id)
+    rcv = request_by_control_levels(inport, outport, 3, control_levels, device_id)
     rcv = rcv.bytes()
-    return hex(unnibblize(rcv[5:9]))
+    return unnibblize(rcv[5:9])
+
+def get_param_desc(inport, outport, param_type, device_id = 0x7f):
+    rcv = request_by_param_type(inport, outport, 4, param_type, device_id)
+    rcv = rcv.bytes()
+    size_bytes = unnibblize(rcv[9:11])
+    return {
+        'param_type': hex(unnibblize(rcv[5:9])),
+        'label': unnibblize_str(rcv[11:(11+2*size_bytes)]),
+    }
+
+## SAme as `get_param_desc` but returns only the label
+def get_param_label(inport, outport, control_levels, device_id = 0x7f):
+    rcv = request_by_control_levels(inport, outport, 5, control_levels, device_id)
+    rcv = rcv.bytes()
+    size_bytes = unnibblize(rcv[5:9])
+    return {
+        'label': unnibblize_str(rcv[9:(9+2*size_bytes)]),
+    }
 
 
 
@@ -197,11 +233,13 @@ def get_param_eq_m_gain(inport, outport, device_id = 0x7f):
 # update_master_level(outport, -4, 0x00)
 # resp = get_param_eq_m_gain(inport, outport, 0x00)
 
-resp = display_dump(inport, outport, 0x00)
+# resp = display_dump(inport, outport, 0x00)
 
 
-# get_param_display(inport, outport, [0, 2, 1, 2], 0x00)
-# resp = get_param_type(inport, outport, [0, 2, 1, 2], 0x00)
+# resp = get_param_display(inport, outport, [0, 2, 1, 2], 0x00)
+p_type = get_param_type(inport, outport, [0, 2, 1, 2], 0x00)
+resp = get_param_desc(inport, outport, p_type, 0x00)
+# resp = get_param_label(inport, outport, [0, 2, 1, 2], 0x00)
 
 # resp = get_system_config(inport, outport, 0x00)
 
