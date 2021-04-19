@@ -29,9 +29,12 @@ Under Ubuntu, this was necessary:
 https://mido.readthedocs.io/en/latest/messages.html#system-exclusive-messages
 
 https://lexiconpro.com/en/product_documents/mpx1_v1_1_midi_impl_rev1pdf
+https://lexiconpro.com/en/product_documents/mpx1ownerspdf
+https://lexiconpro.com/en/product_documents/mpx1_user_guide_rev2pdf
 
 https://www.linuxrouen.fr/wp/programmation/scripts-midi-in-avec-python-mido-et-rtmidi-25420/
 
+https://github.com/jbeuckm/Ctrlr-Lexicon-MPX100
 https://www.youtube.com/watch?v=lszMkl3Jp1k&t=1218s
 
 https://github.com/vishnubob/python-midi/issues/95#issuecomment-246513542
