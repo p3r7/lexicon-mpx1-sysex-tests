@@ -1,3 +1,6 @@
+
+import signal
+
 import math
 from functools import reduce # only in Python 3
 import operator
@@ -14,6 +17,17 @@ mido.set_backend('mido.backends.pygame')
 
 inport = mido.open_input('MidiSport 1x1 MIDI 1')
 outport = mido.open_output('MidiSport 1x1 MIDI 1')
+
+# outport.reset()
+
+def cleanup_mido():
+    inport.close()
+    outport.close()
+
+def handler(signum, frame):
+    cleanup_mido()
+
+signal.signal(signal.SIGHUP, handler)
 
 
 
@@ -42,6 +56,19 @@ def nibblize(v, size=2):
         v_arr.append(0)
     return v_arr
 
+def nibblize_str(v_str, size=None):
+    v_arr = []
+    for c in v_str:
+       c_nibble = nibblize(ord(c))
+       v_arr.append(c_nibble[0])
+       v_arr.append(c_nibble[1])
+    if size:
+        while size > len(v_arr)/2:
+            v_arr.append(0)
+            v_arr.append(0)
+        v_arr = v_arr[:size]
+    return v_arr
+
 def unnibblize(v_arr):
     v_arr = [hex(v)[2:] for v in reversed(v_arr)]
     v_hex_str = ''.join(v_arr)
@@ -56,6 +83,24 @@ def unnibblize_str(v_arr):
         v = v2 + v1
         out += chr(int(v, 16))
     return out
+
+def nibble_fn_for_type(t):
+    if t == 'int':
+        nibble_fn = nibblize
+    elif t == 'str':
+        nibble_fn = nibblize_str
+    else:
+        nibble_fn = nibblize
+    return nibble_fn
+
+def unnibble_fn_for_type(t):
+    if t == 'int':
+        unnibble_fn = unnibblize
+    elif t == 'str':
+        unnibble_fn = unnibblize_str
+    else:
+        unnibble_fn = unnibblize
+    return unnibble_fn
 
 
 
@@ -185,6 +230,7 @@ def get_system_config(inport, outport, device_id = 0x7f):
 ## p14
 def get_param_data(inport, outport, control_levels, value_type = 'int', device_id = 0x7f):
     rcv = request_by_control_levels(inport, outport, 1, control_levels, device_id)
+    print(rcv.hex())
     rcv = rcv.bytes()
     size_bytes = unnibblize(rcv[5:9])
     nb_control_levels = unnibblize(rcv[(9+2*size_bytes):(9+2*size_bytes)+4])
@@ -194,12 +240,7 @@ def get_param_data(inport, outport, control_levels, value_type = 'int', device_i
         start_b = cl_start_b+(i*4)
         control_levels.append(unnibblize(rcv[start_b:start_b+4]))
 
-    if value_type == 'int':
-        v_parse_fn = unnibblize
-    elif value_type == 'str':
-        v_parse_fn = unnibblize_str
-    else:
-        v_parse_fn = unnibblize
+    v_parse_fn = unnibble_fn_for_type(value_type)
 
     return {
         # 'size_bytes': size_bytes,
@@ -313,7 +354,40 @@ def get_program_info(inport, outport, program_number, device_id = 0x7f):
 
 
 
-## DUMPS
+## API - DATA TRANSFER
+
+# p14
+def set_param_data(outport, control_levels, size_bytes, v, value_type = 'int', device_id = 0x7f):
+    size_b_nibble = nibblize(size_bytes, 4)
+
+    if value_type == 'str':
+        size_bytes *= 2
+
+    v_nibble_fn = nibble_fn_for_type(value_type)
+    v_nibble = v_nibble_fn(v, size_bytes)
+
+    payload = [6,9,device_id,1,
+               # value size
+               size_b_nibble[0],size_b_nibble[1],size_b_nibble[2],size_b_nibble[3]]
+    for v_b in v_nibble:
+        payload.append(v_b)
+
+    nb_control_levels = len(control_levels)
+    nb_cl_nibble = nibblize(nb_control_levels, 4)
+    for i in range(0, 4):
+        payload.append(nb_cl_nibble[i])
+    for cl in control_levels:
+        cl_nibble = nibblize(cl, 4)
+        for i in range(0,4):
+            payload.append(cl_nibble[i])
+
+    snd = mido.Message('sysex', data=payload)
+    print(snd.hex())
+    outport.send(snd)
+
+
+
+## API - DUMPS
 
 ## page 23
 def db_dump(inport, outport, device_id = 0x7f):
@@ -338,17 +412,19 @@ def db_dump(inport, outport, device_id = 0x7f):
 def display_dump(inport, outport, device_id = 0x7f):
     return get_param_data(inport, outport, [1, 8, 1], 'str', device_id)
 
+def set_display(outport, message, device_id = 0x7f):
+    length = 32
+    set_param_data(outport, [1, 8, 1], length, message, 'str', device_id)
+
 
 
 ## BUILD CONTROL TREE
 
 # p5
-def make_control_tree(inport, outport, device_id = 0x7f, control_level=[]):
+def make_control_tree(inport, outport, device_id = 0x7f, control_level=[], max_cl_depth=5):
 
-    # print("------------------------")
-    # pprint(control_level)
-
-    # tree={}
+    print("------------------------")
+    pprint(control_level)
 
     p_type = get_param_type(inport, outport, control_level, device_id)
     p_desc = get_param_desc(inport, outport, p_type, device_id)
@@ -357,7 +433,9 @@ def make_control_tree(inport, outport, device_id = 0x7f, control_level=[]):
         'desc': p_desc,
     }
 
-    if p_desc['control_flags'] == 0x04: # non-editable param, i.e. tree branching
+    # non-editable param, i.e. tree branching
+    if p_desc['control_flags'] & 0x04 != 0 \
+       and len(control_level)+1 <= max_cl_depth:
         p['children'] = {}
         for v in p_desc['vals']:
             for cl_id in range(v['min'], v['max']+1):
@@ -388,6 +466,7 @@ def update_master_mix(outport, v, device_id = 0x7f):
     v_nibble = nibblize(v)
     payload = [6,9,device_id,1,1,0,0,0,v_nibble[0],v_nibble[1],3,0,0,0,0,0,0,0,3,1,0,0,12,0,0,0]
     snd = mido.Message('sysex', data=payload)
+    print(snd.hex())
     outport.send(snd)
 
 def update_master_level(outport, v, device_id = 0x7f):
@@ -396,15 +475,19 @@ def update_master_level(outport, v, device_id = 0x7f):
     snd = mido.Message('sysex', data=payload)
     outport.send(snd)
 
+def update_master_mix2(outport, v, device_id = 0x7f):
+    set_param_data(outport, [0, 19, 12], 1, v, 'int', device_id)
+
 
 
 
 ## TESTS
 
-# resp = device_inquiry(inport, outport, 0x00)
+resp = device_inquiry(inport, outport, 0x00)
 # resp = db_dump(inport, outport, 0x00)
 
 # update_master_mix(outport, 100, 0x00)
+# update_master_mix2(outport, 100, 0x00)
 # update_master_level(outport, -4, 0x00)
 # resp = get_param_eq_m_gain(inport, outport, 0x00)
 
@@ -430,13 +513,38 @@ def update_master_level(outport, v, device_id = 0x7f):
 
 # resp = get_param_data(inport, outport, [0], device_id = 0x00)
 
+# pprint(p_type)
 # pprint(resp)
 
+
+# p_type = get_param_type(inport, outport, [1, 2, 5], 0x00)
+# # p_type = get_param_type(inport, outport, [1, 2, 3, 31, 67], 0x00)
+# resp = get_param_desc(inport, outport, p_type, 0x00)
+# pprint(resp)
+
+
+# display
+# p_type = get_param_type(inport, outport, [1, 8, 1], 0x00)
+# print(p_type)
+# resp = get_param_desc(inport, outport, 0x011e , 0x00)
+# pprint(resp)
+
+# mix
+# p_type = get_param_type(inport, outport, [0, 19, 12], 0x00)
+# resp = get_param_desc(inport, outport, 327 , 0x00)
+# print(resp)
+
+
+try:
+    display_dump(inport, outport, 0x00)
+    set_display(outport, " / / / /", 0x00)
+except KeyboardInterrupt as e:
+    cleanup_mido()
 
 
 ## MAIN
 
-device_id = 0x00
+# device_id = 0x00
 
 # 1- get number of parameters
 # sysconf = get_system_config(inport, outport, device_id)
@@ -466,9 +574,17 @@ device_id = 0x00
 #     pprint(p_desc)
 
 
-# NB: this is slow AF
-# control_tree = make_control_tree(inport, outport, device_id)
-# pprint(control_tree)
+# try:
+#     # NB: this is slow AF
+#     control_tree = make_control_tree(inport, outport, 0x00)
+#     print(control_tree[0]['label'])
+#     print(control_tree[0]['children'][2]['label'])
+#     print(control_tree[0]['children'][2]['children'][1]['label'])
+#     print(control_tree[0]['children'][2]['children'][1]['children'][2]['label'])
+#     # pprint(control_tree)
+# except KeyboardInterrupt as e:
+    # cleanup_mido()
+
 
 
 # pprint(root_p_desc)
@@ -476,6 +592,4 @@ device_id = 0x00
 
 ## CLEANUP
 
-inport.close()
-# outport.reset()
-outport.close()
+cleanup_mido()
