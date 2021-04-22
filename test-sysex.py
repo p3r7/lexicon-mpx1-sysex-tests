@@ -4,14 +4,17 @@ import signal
 import math
 from functools import reduce # only in Python 3
 import operator
+import time
+
 from pprint import pprint
+from icecream import ic
 
 import mido
 # import mido.backends.pygame
 
 
 
-## INIT
+## INIT - MIDI
 
 mido.set_backend('mido.backends.pygame')
 
@@ -28,6 +31,18 @@ def handler(signum, frame):
     cleanup_mido()
 
 signal.signal(signal.SIGHUP, handler)
+
+
+
+## INIT - DEBUG
+
+DEBUG = True
+
+if DEBUG:
+    ic.enable()
+else:
+    ic.disable()
+ic.configureOutput(includeContext=True)
 
 
 
@@ -111,8 +126,11 @@ def unnibble_fn_for_type(t):
 def device_inquiry(inport, outport, device_id = 0x7f):
     payload = [0x7e, device_id, 0x06, 0x01]
     snd = mido.Message('sysex', data=payload)
+    ic(snd.hex())
     outport.send(snd)
+    time.sleep(0.01)
     rcv = inport.receive()
+    ic(rcv.hex())
     rcv = rcv.bytes()
     return {
         'version_major': rcv[10],
@@ -149,9 +167,11 @@ def request_by_control_levels(inport, outport, request_class, control_levels, de
             payload.append(cl_nibble[i])
 
     snd = mido.Message('sysex', data=payload)
+    ic(snd.hex())
     outport.send(snd)
+    time.sleep(0.01)
     rcv = inport.receive()
-    # print(rcv.hex())
+    ic(rcv.hex())
     return rcv
 
 def request_by_param_type(inport, outport, request_class, param_type, device_id = 0x7f):
@@ -167,10 +187,11 @@ def request_by_param_type(inport, outport, request_class, param_type, device_id 
     ]
 
     snd = mido.Message('sysex', data=payload)
-    # print(snd.hex())
+    ic(snd.hex())
     outport.send(snd)
+    time.sleep(0.01)
     rcv = inport.receive()
-    # print(rcv.hex())
+    ic(rcv.hex())
     return rcv
 
 def request_by_effect(inport, outport, request_class, effect_type, effect_number, device_id = 0x7f):
@@ -189,9 +210,11 @@ def request_by_effect(inport, outport, request_class, effect_type, effect_number
         0, 0
     ]
     snd = mido.Message('sysex', data=payload)
+    ic(snd.hex())
     outport.send(snd)
+    time.sleep(0.01)
     rcv = inport.receive()
-    # print(rcv.hex())
+    ic(rcv.hex())
     return rcv
 
 def request_by_program(inport, outport, request_class, program_number, device_id = 0x7f):
@@ -209,8 +232,10 @@ def request_by_program(inport, outport, request_class, program_number, device_id
     ]
     snd = mido.Message('sysex', data=payload)
     outport.send(snd)
+    ic(snd.hex())
+    time.sleep(0.01)
     rcv = inport.receive()
-    # print(rcv.hex())
+    ic(rcv.hex())
     return rcv
 
 # p13
@@ -230,7 +255,6 @@ def get_system_config(inport, outport, device_id = 0x7f):
 ## p14
 def get_param_data(inport, outport, control_levels, value_type = 'int', device_id = 0x7f):
     rcv = request_by_control_levels(inport, outport, 1, control_levels, device_id)
-    print(rcv.hex())
     rcv = rcv.bytes()
     size_bytes = unnibblize(rcv[5:9])
     nb_control_levels = unnibblize(rcv[(9+2*size_bytes):(9+2*size_bytes)+4])
@@ -360,8 +384,8 @@ def get_program_info(inport, outport, program_number, device_id = 0x7f):
 def set_param_data(outport, control_levels, size_bytes, v, value_type = 'int', device_id = 0x7f):
     size_b_nibble = nibblize(size_bytes, 4)
 
-    if value_type == 'str':
-        size_bytes *= 2
+    # if value_type == 'str':
+    size_bytes *= 2
 
     v_nibble_fn = nibble_fn_for_type(value_type)
     v_nibble = v_nibble_fn(v, size_bytes)
@@ -382,8 +406,9 @@ def set_param_data(outport, control_levels, size_bytes, v, value_type = 'int', d
             payload.append(cl_nibble[i])
 
     snd = mido.Message('sysex', data=payload)
-    print(snd.hex())
+    ic(snd.hex())
     outport.send(snd)
+    time.sleep(0.01)
 
 
 
@@ -394,10 +419,10 @@ def db_dump(inport, outport, device_id = 0x7f):
     payload = [0x06, 0x09, device_id, 0x06, 0x06, 0x01,
                0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     snd = mido.Message('sysex', data=payload)
-    # print(snd.hex())
+    ic(snd.hex())
     outport.send(snd)
     rcv = inport.receive()
-    # print(rcv.hex())
+    ic(rcv.hex())
     rcv = rcv.bytes()
     rcv_payload = rcv[5:]
     out = []
@@ -409,12 +434,31 @@ def db_dump(inport, outport, device_id = 0x7f):
         })
     return out
 
+
+
+## API - SPECIFIC - CURRENT PROGRAM
+
+def get_current_program(inport, outport, device_id = 0x7f):
+    return get_param_data(inport, outport, [0, 19, 9], 'int', device_id)
+
+
+def set_current_program(outport, v, device_id = 0x7f):
+    return set_param_data(outport, [0, 19, 9], 2, v, 'int', device_id)
+
+
+
+
+## API - SPECIFIC - DISPLAY
+
 def display_dump(inport, outport, device_id = 0x7f):
     return get_param_data(inport, outport, [1, 8, 1], 'str', device_id)
 
 def set_display(outport, message, device_id = 0x7f):
     length = 32
     set_param_data(outport, [1, 8, 1], length, message, 'str', device_id)
+
+def dump_custom_characters(inport, outport, device_id = 0x7f):
+    return get_param_data(inport, outport, [1, 8, 3], 'str', device_id)
 
 
 
@@ -433,9 +477,13 @@ def make_control_tree(inport, outport, device_id = 0x7f, control_level=[], max_c
         'desc': p_desc,
     }
 
+    print(p_desc['label'])
+
     # non-editable param, i.e. tree branching
     if p_desc['control_flags'] & 0x04 != 0 \
-       and len(control_level)+1 <= max_cl_depth:
+       and len(control_level)+1 <= max_cl_depth \
+       and not (p_desc['label'] in ['CC        ', 'Cont Remap ', 'Ctl Smooth', 'Map        ', 'ProgramDump']):
+        print('BRANCH!')
         p['children'] = {}
         for v in p_desc['vals']:
             for cl_id in range(v['min'], v['max']+1):
@@ -486,6 +534,7 @@ def update_master_mix2(outport, v, device_id = 0x7f):
 resp = device_inquiry(inport, outport, 0x00)
 # resp = db_dump(inport, outport, 0x00)
 
+
 # update_master_mix(outport, 100, 0x00)
 # update_master_mix2(outport, 100, 0x00)
 # update_master_level(outport, -4, 0x00)
@@ -501,7 +550,7 @@ resp = device_inquiry(inport, outport, 0x00)
 
 # resp = get_system_config(inport, outport, 0x00)
 
-# p_type = get_param_type(inport, outport, [0, 2, 1, 2], 0x00)
+# p_type = get_param_type(inport, outport, [0, 19, 9], 0x00)
 # print(p_type)
 # resp = get_param_desc(inport, outport, p_type, 0x00)
 
@@ -511,16 +560,18 @@ resp = device_inquiry(inport, outport, 0x00)
 
 # resp = get_program_info(inport, outport, 0, 0x00)
 
-# resp = get_param_data(inport, outport, [0], device_id = 0x00)
+# resp = get_param_data(inport, outport, [0, 19, 9], device_id = 0x00)
+# set_current_program(outport, 44, device_id = 0x00)
+resp = get_current_program(inport, outport, device_id = 0x00)
 
 # pprint(p_type)
 # pprint(resp)
 
 
 # p_type = get_param_type(inport, outport, [1, 2, 5], 0x00)
-# # p_type = get_param_type(inport, outport, [1, 2, 3, 31, 67], 0x00)
+# p_type = get_param_type(inport, outport, [0, 18, 9, 1], 0x00)
 # resp = get_param_desc(inport, outport, p_type, 0x00)
-# pprint(resp)
+pprint(resp)
 
 
 # display
@@ -534,21 +585,33 @@ resp = device_inquiry(inport, outport, 0x00)
 # resp = get_param_desc(inport, outport, 327 , 0x00)
 # print(resp)
 
+# cutom characters
+# p_type = get_param_type(inport, outport, [1, 8, 3], 0x00)
+# p_type = 0x0130
+# resp = get_param_desc(inport, outport, p_type, 0x00)
+# print(resp)
 
-try:
-    display_dump(inport, outport, 0x00)
-    set_display(outport, " / / / /", 0x00)
-except KeyboardInterrupt as e:
-    cleanup_mido()
+# resp = dump_custom_characters(inport, outport, 0x00)
+# pprint(resp)
+
+# try:
+#     display_dump(inport, outport, 0x00)
+#     # set_display(outport, " / / / /", 0x00)
+#     # all custom characters:
+#     set_display(outport, ""+chr(0)+chr(1)+chr(2)+chr(3)+chr(4)+chr(5)+chr(6)+chr(7), 0x00)
+# except KeyboardInterrupt as e:
+#     cleanup_mido()
 
 
 ## MAIN
 
-# device_id = 0x00
+device_id = 0x00
 
 # 1- get number of parameters
 # sysconf = get_system_config(inport, outport, device_id)
+# pprint(sysconf)
 # nb_params = sysconf['nb_params']
+
 
 # 2- build control tree
 
@@ -577,13 +640,19 @@ except KeyboardInterrupt as e:
 # try:
 #     # NB: this is slow AF
 #     control_tree = make_control_tree(inport, outport, 0x00)
-#     print(control_tree[0]['label'])
-#     print(control_tree[0]['children'][2]['label'])
-#     print(control_tree[0]['children'][2]['children'][1]['label'])
-#     print(control_tree[0]['children'][2]['children'][1]['children'][2]['label'])
+#     pprint(control_tree['desc']['label'])
+#     pprint(control_tree['children'][0]['desc']['label'])
+#     pprint(control_tree['children'][0]['children'][2]['desc']['label'])
+#     pprint(control_tree['children'][0]['children'][2]['children'][1]['desc']['label'])
+#     pprint(control_tree['children'][0]['children'][2]['children'][1]['children'][2]['desc']['label'])
+
+#     # print(control_tree[0]['label'])
+#     # print(control_tree[0]['children'][2]['label'])
+#     # print(control_tree[0]['children'][2]['children'][1]['label'])
+#     # print(control_tree[0]['children'][2]['children'][1]['children'][2]['label'])
 #     # pprint(control_tree)
 # except KeyboardInterrupt as e:
-    # cleanup_mido()
+#     cleanup_mido()
 
 
 

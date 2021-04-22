@@ -4,3 +4,4 @@ dependencies:
 - pip:
     - mido==1.2.9
     - pygame==2.0.1
+    - icecream==2.1.0
