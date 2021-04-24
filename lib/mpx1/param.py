@@ -31,11 +31,12 @@ def get_current_program_macros(inport, outport, device_id = 0x7f):
     out = []
     for i in range(0, 10):
         v = get_current_program_macro(inport, outport, i, device_id)
-        if v['param_id'] != 255: # unassigned
-            out.append(v)
+        if v['param_id'] == 255: # unassigned
+            break
+        out.append(v)
     return out
 
-def get_current_program_context(inport, outport, device_id = 0x7f):
+def get_current_program_context(inport, outport, device_id = 0x7f, control_tree=None):
     curr_p_id = mpx1_sysex.get_current_program(inport, outport, device_id)['value']
     curr_p_info = mpx1_sysex.get_program_info(inport, outport, curr_p_id, device_id)
     curr_p_soft_params = get_current_program_macros(inport, outport, device_id)
@@ -52,9 +53,16 @@ def get_current_program_context(inport, outport, device_id = 0x7f):
         else: # not actually an effect but a modulation source
             param_cl = [0, effect_id, param_id]
 
-        effect_label = mpx1_sysex.get_param_label(inport, outport, effect_cl, device_id)['label'].strip()
-        param_type = mpx1_sysex.get_param_type(inport, outport, param_cl, device_id)
-        param_desc = mpx1_sysex.get_param_desc(inport, outport, param_type, device_id)
+        if control_tree is not None:
+            effect_p_type = control_tree['cl->type'][tuple(effect_cl)]
+            effect_label = control_tree['descs'][effect_p_type]['label'].strip()
+            param_type = control_tree['cl->type'][tuple(param_cl)]
+            param_desc = control_tree['descs'][param_type]
+        else:
+            effect_label = mpx1_sysex.get_param_label(inport, outport, effect_cl, device_id)['label'].strip()
+            param_type = mpx1_sysex.get_param_type(inport, outport, param_cl, device_id)
+            param_desc = mpx1_sysex.get_param_desc(inport, outport, param_type, device_id)
+
         param_data = mpx1_sysex.get_param_data(inport, outport, param_cl, device_id=device_id)
         macros.append({
             'type': param_type,

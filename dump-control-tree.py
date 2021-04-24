@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
+import os
 import signal
+import _pickle as pickle
 
 from pprint import pprint
 from icecream import ic
 
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import mido
-
 
 import lib.mpx1.debug_state as debug_state
 import lib.mpx1.sysex as mpx1_sysex
@@ -47,7 +49,7 @@ signal.signal(signal.SIGHUP, handler)
 
 ## INIT - DEBUG
 
-DEBUG = True
+DEBUG = False
 DEBUG_MIDI = False
 
 if DEBUG:
@@ -67,8 +69,12 @@ else:
 try:
 
     # NB: this is slow AF
-    control_tree = mpx1_control_tree.make(inport, outport, DEVICE_ID)
 
+    resp = mpx1_control_tree.make_flat(inport, outport, DEVICE_ID)
+    with open("control_tree_flat.pickle", "wb") as f:
+        f.write(pickle.dumps(resp))
+
+    # control_tree = mpx1_control_tree.make(inport, outport, DEVICE_ID)
     # pprint(control_tree['desc']['label'])
     # pprint(control_tree['children'][0]['desc']['label'])
     # pprint(control_tree['children'][0]['children'][2]['desc']['label'])

@@ -2,7 +2,7 @@
 
 import os
 import signal
-import time
+import _pickle as pickle
 
 from pprint import pprint
 from icecream import ic
@@ -66,6 +66,10 @@ else:
 
 ## MAIN
 
+control_tree = None
+with open("control_tree_flat.pickle", "rb") as f:
+    control_tree = pickle.load(f)
+
 try:
     # pgm = 120
     # mpx1_sysex.set_current_program(outport, pgm, DEVICE_ID)
@@ -77,7 +81,7 @@ try:
     # p_macros = mpx1_program_params.get_current_program_macros(inport, outport, DEVICE_ID)
     # pprint(p_macros)
 
-    pgm_ctx = mpx1_program_params.get_current_program_context(inport, outport, DEVICE_ID)
+    pgm_ctx = mpx1_program_params.get_current_program_context(inport, outport, DEVICE_ID, control_tree)
     pprint(pgm_ctx)
 
 except KeyboardInterrupt as e:

@@ -7,7 +7,7 @@ from icecream import ic
 
 import mido
 
-from lib.mpx1.binencoding import nibblize, nibblize_str, \
+from lib.core.binencoding import nibblize, nibblize_str, \
     unnibblize, unnibblize_str, \
     nibble_fn_for_type, unnibble_fn_for_type
 

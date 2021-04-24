@@ -1,7 +1,7 @@
 
 
 
-## CORE: BINARY ENCODING
+## BINARY ENCODING
 
 def neg_complement_maybe(v):
     if v<0:
@@ -29,6 +29,10 @@ def nibblize_str(v_str, size=None):
             v_arr = v_arr[:size]
     return v_arr
 
+
+
+## BINARY DECODING
+
 def unnibblize(v_arr):
     v_arr = [hex(v)[2:] for v in reversed(v_arr)]
     v_hex_str = ''.join(v_arr)
@@ -43,6 +47,10 @@ def unnibblize_str(v_arr):
         v = v2 + v1
         out += chr(int(v, 16))
     return out
+
+
+
+## FN ROUTING
 
 def nibble_fn_for_type(t):
     if t == 'int':
