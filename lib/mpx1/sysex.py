@@ -9,6 +9,7 @@ import mido
 
 from lib.core.binencoding import nibblize, nibblize_str, \
     unnibblize, unnibblize_str, \
+    decode_negative_maybe, \
     nibble_fn_for_type, unnibble_fn_for_type
 
 
@@ -325,6 +326,8 @@ def get_param_desc(inport, outport, param_type, device_id = 0x7f):
     nb_vals = math.floor(len(rcv)/(3*2*2)) # NB: this is hackish
     for i in range(0, nb_vals):
         vals.append({
+            # 'min': decode_negative_maybe(unnibblize(rcv[i*(3*2*2):i*(3*2*2)+4])),
+            # 'max': decode_negative_maybe(unnibblize(rcv[i*(3*2*2)+4:i*(3*2*2)+8])),
             'min': unnibblize(rcv[i*(3*2*2):i*(3*2*2)+4]),
             'max': unnibblize(rcv[i*(3*2*2)+4:i*(3*2*2)+8]),
             'display_unit': unnibblize(rcv[i*(3*2*2)+8:i*(3*2*2)+12]),

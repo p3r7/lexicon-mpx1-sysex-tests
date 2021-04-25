@@ -33,6 +33,14 @@ def nibblize_str(v_str, size=None):
 
 ## BINARY DECODING
 
+def is_negative_encoded(v):
+    return v >= 0xff00
+
+def decode_negative_maybe(v):
+    if is_negative_encoded(v):
+        v -= (0xff00 + 256)
+    return v
+
 def unnibblize(v_arr):
     v_arr = [hex(v)[2:] for v in reversed(v_arr)]
     v_hex_str = ''.join(v_arr)
