@@ -1,37 +1,53 @@
-import mido
-# import mido.backends.pygame
+#!/usr/bin/env python3
+
+import os
+import signal
+
 from pprint import pprint
+from icecream import ic
+
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+import mido
+
+import lib.mpx1.debug_state as debug_state
+import lib.mpx1.sysex as mpx1_sysex
 
 
 
-## INIT
+## CONF
+
+MIDO_BACKEND = 'mido.backends.pygame'
+
+OUTPORT_LABEL = 'MidiSport 1x1 MIDI 1'
+
+DEVICE_ID = 0x00
+
+
+
+## INIT - MIDI
 
 mido.set_backend('mido.backends.pygame')
 
-# pprint(mido.get_output_names())
-# pprint(mido.get_input_names())
+outport = mido.open_output(OUTPORT_LABEL)
 
-outport = mido.open_output('MidiSport 1x1 MIDI 1')
+def cleanup_mido():
+    outport.close()
+
+def handler(signum, frame):
+    cleanup_mido()
+
+signal.signal(signal.SIGHUP, handler)
 
 
 
-## HELPER FNS
-
-def nibblize(v):
-    v_str = hex(v)[2:]
-    if len(v_str) == 1:
-        return [int(v_str[0], 16), 0]
-    else:
-        return [int(v_str[1], 16), int(v_str[0], 16)]
+## FNS - MIDI PGM CHANGE
 
 def msg_change_program_std(pgm_id):
     return mido.Message('program_change', program=pgm_id-1)
 
-def msg_change_program_sysex(pgm_id):
-    v = pgm_id-1
-    v_nibble = nibblize(v)
-    payload = [0x06, 0x09, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, v_nibble[0], v_nibble[1], 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00]
-    return mido.Message('sysex', data=payload)
+def change_pgm_std(outport, pgm_id, device_id):
+    snd = msg_change_program_std(pgm_id)
+    outport.send(snd)
 
 
 
@@ -39,15 +55,20 @@ def msg_change_program_sysex(pgm_id):
 
 mpx_program=200
 
-msg = msg_change_program_sysex(mpx_program)
+try:
 
-print(msg.hex())
+    # change_pgm_std(outport, mpx_program, DEVICE_ID)
+    mpx1_sysex.set_current_program(outport, pgm, DEVICE_ID)
 
-outport.send(msg)
+    resp = mpx1_sysex.get_current_program(inport, outport, DEVICE_ID)
+    current_program = resp['value']
+    print("Current program is #" + str(current_program + 1))
+
+except KeyboardInterrupt as e:
+    cleanup_mido()
 
 
 
 ## CLEANUP
 
-# outport.reset()
-outport.close()
+cleanup_mido()
