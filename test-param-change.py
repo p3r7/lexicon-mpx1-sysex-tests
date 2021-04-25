@@ -107,9 +107,41 @@ def make_stream():
 
 ## COROUTINES - MIDO LISTEN
 
-# NB: not working w/ pygame backend
+def process_cc_msg_maybe(msg):
+    if msg.type == 'control_change':
+        rcv = msg.bytes()
+        cc_id = rcv[1]
+        macro_id = cc_id - 1
+        v = rcv[2]
+
+        if macro_id <= len(pgm_ctx['soft_params']):
+            macro = pgm_ctx['soft_params'][macro_id]
+            v_min = decode_negative_maybe(macro['desc']['vals'][0]['min'])
+            v_max = decode_negative_maybe(macro['desc']['vals'][0]['max'])
+            new_v = lininterpol_cc(v, v_min, v_max)
+            # print("Setting "+macro['desc']['label']+" to "+str(new_v))
+            cl = tuple(macro['cl'])
+            midi_param_send_qs[cl] = {
+                'size': macro['desc']['param_size'],
+                'value': new_v,
+                'type': 'int', # NB: can this differ?
+            }
+
+# Alt version w/ an asynio stream
+# does not work w/ pygame backend, and could use a thread anyway
+
 # async_mido_cb, async_mido_stream = make_stream()
 # cc_inport = mido.open_input(CC_INPORT_LABEL, callback=async_mido_cb)
+# async def process_input_cc():
+#     async for msg in async_mido_stream:
+#         process_cc_msg_maybe(msg)
+
+async def process_input_cc():
+    while True:
+        for msg in cc_inport.iter_pending():
+            process_cc_msg_maybe(msg)
+        await asyncio.sleep(1/1000)
+
 
 
 ## COROUTINES - CLOCKED SEND
@@ -128,58 +160,14 @@ async def midi_param_send():
             mpx1_sysex.set_param_data(outport, cl, v_props['size'], v_props['value'], v_props['type'], DEVICE_ID)
         await asyncio.sleep(MIDI_SEND_PARAM_RATE)
 
-# async def process_input_cc():
-#     async for msg in async_mido_stream:
-#         if msg.type == 'control_change':
-#             rcv = msg.bytes()
-#             cc_id = rcv[1]
-#             macro_id = cc_id - 1
-#             v = rcv[2]
 
-#             if macro_id <= len(pgm_ctx['soft_params']):
-#                 macro = pgm_ctx['soft_params'][macro_id]
-#                 v_min = macro['desc']['vals'][0]['min']
-#                 v_max = macro['desc']['vals'][0]['max']
-#                 new_v = lininterpol_cc(v, v_min, v_max)
-#                 print("Setting "+macro['desc']['label']+" to "+str(new_v))
-#                 cl = tuple(macro['cl'])
-#                 midi_param_send_qs[cl] = {
-#                     'size': macro['desc']['param_size'],
-#                     'value': new_v,
-#                     'type': 'int', # NB: can this differ?
-#                 }
-#         await asyncio.sleep(1/1000)
 
-async def process_input_cc():
-    while True:
-        for msg in cc_inport.iter_pending():
-            if msg.type == 'control_change':
-                rcv = msg.bytes()
-                cc_id = rcv[1]
-                macro_id = cc_id - 1
-                v = rcv[2]
-
-                if macro_id <= len(pgm_ctx['soft_params']):
-                    macro = pgm_ctx['soft_params'][macro_id]
-                    v_min = decode_negative_maybe(macro['desc']['vals'][0]['min'])
-                    v_max = decode_negative_maybe(macro['desc']['vals'][0]['max'])
-                    new_v = lininterpol_cc(v, v_min, v_max)
-                    # print("Setting "+macro['desc']['label']+" to "+str(new_v))
-                    cl = tuple(macro['cl'])
-                    midi_param_send_qs[cl] = {
-                        'size': macro['desc']['param_size'],
-                        'value': new_v,
-                        'type': 'int', # NB: can this differ?
-                    }
-        await asyncio.sleep(1/1000)
-
+
+## MAIN
 
 loop = asyncio.get_event_loop()
 midi_param_send_clock = loop.create_task(midi_param_send())
 process_input_cc_task = loop.create_task(process_input_cc())
-
-
-## MAIN
 
 control_tree = None
 with open("control_tree_flat.pickle", "rb") as f:
