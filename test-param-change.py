@@ -14,7 +14,6 @@ import mido
 
 import lib.mpx1.debug_state as debug_state
 import lib.mpx1.sysex as mpx1_sysex
-import lib.mpx1.param as mpx1_program_params
 from lib.core.binencoding import decode_negative_maybe
 
 
@@ -174,7 +173,7 @@ with open("control_tree_flat.pickle", "rb") as f:
     control_tree = pickle.load(f)
 
 try:
-    pgm_ctx = mpx1_program_params.get_current_program_context(inport, outport, DEVICE_ID, control_tree)
+    pgm_ctx = mpx1_sysex.get_current_program_context(inport, outport, DEVICE_ID, control_tree)
     pprint(pgm_ctx)
 
     loop.run_forever()
