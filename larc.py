@@ -12,6 +12,9 @@ from icecream import ic
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import mido
 
+from pythonosc.osc_server import AsyncIOOSCUDPServer, BlockingOSCUDPServer
+from pythonosc.dispatcher import Dispatcher
+
 import lib.mpx1.debug_state as debug_state
 import lib.mpx1.sysex as mpx1_sysex
 from lib.core.binencoding import decode_negative_maybe
@@ -28,6 +31,9 @@ MIDI_SEND_PARAM_RATE = 1/10
 CC_INPORT_LABEL = 'LPD8 MIDI 1'
 INPORT_LABEL = 'MidiSport 1x1 MIDI 1'
 OUTPORT_LABEL = 'MidiSport 1x1 MIDI 1'
+
+OSC_SRV_HOST = "0.0.0.0"
+OSC_SRV_PORT = 5005
 
 DEVICE_ID = 0x00
 
@@ -110,27 +116,38 @@ def make_stream():
 
 
 
-## COROUTINES - MIDO LISTEN INPUTS
+## FNS - SYSEX
+
+def register_update_macro(macro_id, v):
+    global midi_param_send_qs
+    if macro_id <= len(pgm_ctx['soft_params']):
+        macro = pgm_ctx['soft_params'][macro_id]
+        v_min = decode_negative_maybe(macro['desc']['vals'][0]['min'])
+        v_max = decode_negative_maybe(macro['desc']['vals'][0]['max'])
+        new_v = lininterpol_cc(v, v_min, v_max)
+        # print("Setting "+macro['desc']['label']+" to "+str(new_v))
+        cl = tuple(macro['cl'])
+        midi_param_send_qs[cl] = {
+            'size': macro['desc']['param_size'],
+            'value': new_v,
+            'type': 'int', # NB: can this differ?
+        }
+
+
+
+## COROUTINE - MIDO LISTEN CC
+
+def cc_id_to_macro_id(cc_id):
+    return cc_id - 1
 
 def process_cc_msg_maybe(msg):
     if msg.type == 'control_change':
         rcv = msg.bytes()
         cc_id = rcv[1]
-        macro_id = cc_id - 1
+        macro_id = cc_id_to_macro_id(cc_id)
         v = rcv[2]
+        register_update_macro(macro_id, v)
 
-        if macro_id <= len(pgm_ctx['soft_params']):
-            macro = pgm_ctx['soft_params'][macro_id]
-            v_min = decode_negative_maybe(macro['desc']['vals'][0]['min'])
-            v_max = decode_negative_maybe(macro['desc']['vals'][0]['max'])
-            new_v = lininterpol_cc(v, v_min, v_max)
-            # print("Setting "+macro['desc']['label']+" to "+str(new_v))
-            cl = tuple(macro['cl'])
-            midi_param_send_qs[cl] = {
-                'size': macro['desc']['param_size'],
-                'value': new_v,
-                'type': 'int', # NB: can this differ?
-            }
 
 # Alt version w/ an asynio stream
 # does not work w/ pygame backend, and could use a thread anyway
@@ -149,7 +166,7 @@ async def process_input_cc():
 
 
 
-## COROUTINES - MIDO LISTEN LEXICON ANSWERS
+## COROUTINE - MIDO LISTEN LEXICON ANSWERS
 
 def process_lexicon_msg_maybe(msg):
     global pgm_ctx
@@ -175,7 +192,7 @@ async def process_input_lexicon():
 
 
 
-## COROUTINES - CLOCKED SEND
+## COROUTINE - CLOCKED SYSEX SEND
 
 midi_param_send_qs={}
 midi_param_prev_qs={}
@@ -191,19 +208,46 @@ async def midi_param_send():
         await asyncio.sleep(MIDI_SEND_PARAM_RATE)
 
 
+
+## INIT - OSC SERVER ROUTES
+
+def osc_macro_handler(address, *args):
+    macro_id = address.replace("/param/macro/", "", 1)
+    macro_id = int(macro_id)
+    v = args[0]
+    register_update_macro(macro_id, v)
+
+osc_dispatcher = Dispatcher()
+osc_dispatcher.map("/param/macro/*", osc_macro_handler)
+
+
+
+## COROUTINE - OSC SERVER
+
+async def osc_listen():
+    while True:
+        await asyncio.sleep(1/1000)
+
+async def osc_listen_server():
+    server = AsyncIOOSCUDPServer((OSC_SRV_HOST, OSC_SRV_PORT), osc_dispatcher, asyncio.get_event_loop())
+    transport, protocol = await server.create_serve_endpoint()  # Create datagram endpoint and start serving
+    await osc_listen()  # Enter main loop of program
+    transport.close()  # Clean up serve endpoint
+
 
 
 ## MAIN
 
+control_tree = None
+with open("control_tree_flat.pickle", "rb") as f:
+    control_tree = pickle.load(f)
 
 loop = asyncio.get_event_loop()
 midi_param_send_clock = loop.create_task(midi_param_send())
 process_input_cc_task = loop.create_task(process_input_cc())
 process_input_lexicon_task = loop.create_task(process_input_lexicon())
+process_osc_listen_server = loop.create_task(osc_listen_server())
 
-control_tree = None
-with open("control_tree_flat.pickle", "rb") as f:
-    control_tree = pickle.load(f)
 
 try:
 
