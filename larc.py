@@ -125,8 +125,10 @@ def register_update_macro(macro_id, v):
         v_min = decode_negative_maybe(macro['desc']['vals'][0]['min'])
         v_max = decode_negative_maybe(macro['desc']['vals'][0]['max'])
         new_v = lininterpol_cc(v, v_min, v_max)
-        # print("Setting "+macro['desc']['label']+" to "+str(new_v))
         cl = tuple(macro['cl'])
+
+        # print("Setting "+macro['desc']['label']+" to "+str(new_v))
+        pgm_ctx['soft_params'][macro_id]['value'] = new_v
         midi_param_send_qs[cl] = {
             'size': macro['desc']['param_size'],
             'value': new_v,
