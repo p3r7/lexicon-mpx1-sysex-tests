@@ -171,14 +171,27 @@ async def process_input_cc():
 def process_lexicon_msg_maybe(msg):
     global pgm_ctx
     print("----------")
-    pprint(msg)
     msg_b = msg.bytes()
+    pprint(msg)
+    # pprint(msg_b)
     if mpx1_sysex.is_change_program_msg(msg_b, 'int', DEVICE_ID):
         print("recognized PGM CHANGE")
         IS_CHANGING_PGM = True
         pgm_ctx = mpx1_sysex.get_current_program_context(inport, outport, DEVICE_ID, control_tree)
         IS_CHANGING_PGM = False
         pprint(pgm_ctx)
+    elif mpx1_sysex.is_param_data_resp(msg_b, DEVICE_ID):
+        cl = mpx1_sysex.get_param_data_resp_cl(msg_b)
+        is_macro_param = False
+        for i, macro in enumerate(pgm_ctx['soft_params']):
+            if cl == macro['cl']:
+                is_macro_param = True
+                v = mpx1_sysex.get_param_data_resp_v(msg_b, 'int')
+                pgm_ctx['soft_params'][i]['value'] = v
+                print("recognized update of soft param #" + str(i) + " (" + macro['label'].strip() + ") value to " + str(v))
+                break
+        if not is_macro_param:
+            print("update of unknown param")
     else:
         print("unrecognized message")
 
@@ -188,7 +201,6 @@ async def process_input_lexicon():
             if not IS_CHANGING_PGM:
                 process_lexicon_msg_maybe(msg)
         await asyncio.sleep(1/1000)
-
 
 
 
@@ -217,8 +229,15 @@ def osc_macro_handler(address, *args):
     v = args[0]
     register_update_macro(macro_id, v)
 
+def osc_pgm_change_handler(address, *args):
+    global IS_CHANGING_PGM
+    pgm_id = args[0] - 1
+    IS_CHANGING_PGM = True
+    mpx1_sysex.set_current_program(outport, pgm_id, DEVICE_ID)
+
 osc_dispatcher = Dispatcher()
 osc_dispatcher.map("/param/macro/*", osc_macro_handler)
+osc_dispatcher.map("/program", osc_pgm_change_handler)
 
 
 
@@ -252,8 +271,12 @@ process_osc_listen_server = loop.create_task(osc_listen_server())
 try:
 
     # empty any message in midi buffer
-    for msg in inport.iter_pending():
-        pass
+    # NB: this isn't working as expected, we might need a blocking loop in an asyncio task that we'd make run for 100ms then kill
+    i = 0
+    while i < 10:
+        for msg in inport.iter_pending():
+            pass
+        i += 1
 
     IS_CHANGING_PGM = True
     pgm_ctx = mpx1_sysex.get_current_program_context(inport, outport, DEVICE_ID, control_tree)

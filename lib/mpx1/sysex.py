@@ -302,8 +302,11 @@ def get_current_program_context(inport, outport, device_id = 0x7f, control_tree=
         effect_id = sp['effect_id']
         effect_cl = [0, effect_id]
 
+        algo_id = None
+        algo_cl = None
         if effect_id < 6: # effect param
             algo_id = curr_p_info['algos'][effect_id]
+            algo_cl = [0, effect_id, algo_id]
             param_cl = [0, effect_id, algo_id, param_id]
         else: # not actually an effect but a modulation source
             param_cl = [0, effect_id, param_id]
@@ -318,8 +321,9 @@ def get_current_program_context(inport, outport, device_id = 0x7f, control_tree=
             param_type = get_param_type(inport, outport, param_cl, device_id)
             param_desc = get_param_desc(inport, outport, param_type, device_id)
 
-        param_data = get_param_data(inport, outport, param_cl, device_id=device_id)
+        param_data = get_param_data(inport, outport, param_cl, device_id=device_id)['value']
         macros.append({
+            'algo_cl': algo_cl,
             'type': param_type,
             'cl': param_cl,
             'label': effect_label + " " + param_desc['label'],
@@ -328,7 +332,9 @@ def get_current_program_context(inport, outport, device_id = 0x7f, control_tree=
         })
 
     return {
-        'pgm_id': curr_p_info['label'],
+        'id': curr_p_id,
+        'label': curr_p_info['label'],
+        'algos': curr_p_info['algos'],
         'soft_params': macros,
     }
 
@@ -374,14 +380,17 @@ def is_param_data_resp(rcv_bytes, device_id=0x7f):
 
 def parse_param_data_resp(rcv_bytes, value_type):
     control_levels = get_param_data_resp_cl(rcv_bytes)
-    size_bytes = unnibblize(rcv_bytes[5:9])
-    v_parse_fn = unnibble_fn_for_type(value_type)
-    v = v_parse_fn(rcv_bytes[9:(9+2*size_bytes)])
+    v = get_param_data_resp_v(rcv_bytes, value_type)
     return {
         # 'size_bytes': size_bytes,
         'value': v,
         'control_levels': control_levels,
     }
+
+def get_param_data_resp_v(rcv_bytes, value_type):
+    size_bytes = unnibblize(rcv_bytes[5:9])
+    v_parse_fn = unnibble_fn_for_type(value_type)
+    return v_parse_fn(rcv_bytes[9:(9+2*size_bytes)])
 
 def get_param_data_resp_cl(rcv_bytes):
     size_bytes = unnibblize(rcv_bytes[5:9])
