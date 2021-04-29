@@ -128,6 +128,7 @@ def register_update_macro(macro_id, v):
         cl = tuple(macro['cl'])
 
         # print("Setting "+macro['desc']['label']+" to "+str(new_v))
+        # NB: we update value in local memory as we won't get a feedback from MPX1 (automation) on this type of change
         pgm_ctx['soft_params'][macro_id]['value'] = new_v
         midi_param_send_qs[cl] = {
             'size': macro['desc']['param_size'],
