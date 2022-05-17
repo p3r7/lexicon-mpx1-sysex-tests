@@ -4,6 +4,7 @@ Small python scripts to remote control a MPX1 over midi.
 
 The aim is to provide functionality similar to a Lexixon [MRC](https://lexiconpro.com/en/products/mrc) or [LARC](https://lexiconpro.com/en/products/larc).
 
+For the hw side of things, look at [this repo](https://github.com/p3r7/larc).
 
 ## Setup
 
